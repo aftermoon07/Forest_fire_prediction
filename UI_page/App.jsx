@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 // CORRECTED IMPORTS: Aliasing conflicting names (Map, ListChecks) directly in the import statement
-import { Clock, Zap, Target, Loader2, Maximize2, Layers, Globe, FileUp, ListChecks as ListChecksIcon, Map as MapIcon } from 'lucide-react';
+import { Clock, Zap, Target, Loader2, Maximize2, Layers, Globe, FileUp, Sparkles, ListChecks as ListChecksIcon, Map as MapIcon } from 'lucide-react';
 
 // --- Constants (Inferred from Model Structure) ---
 const SEQ_LEN = 6;
 const HORIZONS = 3;
 const PATCH_SIZE = 13;
 const CHANNELS = 7;
-// ⚠️ API ENDPOINT: Set to localhost:5000 to match your Flask backend ⚠️
-const API_ENDPOINT = 'http://localhost:5000/api/predict';
+// API ENDPOINT: Configured via environment variable with fallback to local Flask
+const API_ENDPOINT = import.meta.env?.VITE_API_ENDPOINT || 'http://localhost:5000/api/predict';
 
 const DATASET_NAMES = [
     { name: 'T2M (2m Temperature)', abbreviation: 'T2M', type: 'dynamic', files: 6 },
@@ -254,6 +254,57 @@ function App() {
         }
     };
 
+    const handleLoadDemoData = () => {
+        const demoFiles = {};
+        DATASET_NAMES.forEach(({ abbreviation, type, files }) => {
+            if (type === 'dynamic') {
+                demoFiles[abbreviation] = Array.from({ length: files }, (_, i) => 
+                    new File(["demo_geospatial_raster"], `${abbreviation}_t${i + 1}.tif`, { type: "image/tiff" })
+                );
+            } else {
+                demoFiles[abbreviation] = new File(["demo_geospatial_raster"], `${abbreviation}_static.tif`, { type: "image/tiff" });
+            }
+        });
+        setInputFiles(demoFiles);
+        setError(null);
+    };
+
+    const handleQuickDemo = async () => {
+        const demoFiles = {};
+        DATASET_NAMES.forEach(({ abbreviation, type, files }) => {
+            if (type === 'dynamic') {
+                demoFiles[abbreviation] = Array.from({ length: files }, (_, i) => 
+                    new File(["demo_geospatial_raster"], `${abbreviation}_t${i + 1}.tif`, { type: "image/tiff" })
+                );
+            } else {
+                demoFiles[abbreviation] = new File(["demo_geospatial_raster"], `${abbreviation}_static.tif`, { type: "image/tiff" });
+            }
+        });
+        setInputFiles(demoFiles);
+        setError(null);
+        setIsLoading(true);
+        setPredictionResult([]);
+        setTimeDetails(null);
+
+        try {
+            const { prediction, timeDetails: details } = await runPredictionAPI({
+                latMin: parsedLatMin,
+                latMax: parsedLatMax,
+                lonMin: parsedLonMin,
+                lonMax: parsedLonMax,
+                inputFiles: demoFiles
+            });
+            setPredictionResult(prediction);
+            setTimeDetails(details);
+            setCurrentHorizon(0);
+        } catch (e) {
+            console.error("Prediction Error:", e);
+            setError(`Prediction failed due to API connection error. Showing client-side simulation results instead.`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handlePredict = async () => {
         // 1. Check validation
         if (!isFormValid) {
@@ -411,12 +462,23 @@ function App() {
 
                         {/* 2. Data Upload Card */}
                         <div className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200">
-                            <h2 className="text-xl font-bold text-gray-700 mb-4 flex items-center">
-                                <FileUp className="w-5 h-5 mr-2" />
-                                Upload Datasets
-                            </h2>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                                <h2 className="text-xl font-bold text-gray-700 flex items-center">
+                                    <FileUp className="w-5 h-5 mr-2 text-indigo-600" />
+                                    Upload Datasets
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={handleLoadDemoData}
+                                    className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 rounded-lg transition duration-150 flex items-center shadow-sm cursor-pointer"
+                                    title="Auto-fill with sample mock raster file objects for instant testing"
+                                >
+                                    <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+                                    Fill Demo Files (32)
+                                </button>
+                            </div>
                             <p className="text-sm text-gray-500 mb-4">
-                                Total 32 files required (5 dynamic channels $\times$ 6 hours, 2 static channels $\times$ 1 file).
+                                Total 32 files required (5 dynamic channels $\times$ 6 hours, 2 static channels $\times$ 1 file), or click <strong>Fill Demo Files</strong> above.
                             </p>
 
                             <div className="space-y-4">
@@ -487,28 +549,40 @@ function App() {
                             </div>
                         </div>
 
-                        {/* 3. Run Button */}
-                        <button
-                            onClick={handlePredict}
-                            disabled={!isFormValid || isLoading}
-                            className={`w-full py-3 px-4 rounded-xl font-bold text-lg transition duration-300 flex items-center justify-center 
-                                ${isFormValid && !isLoading 
-                                    ? 'bg-red-600 text-white hover:bg-red-700 shadow-xl shadow-red-300' 
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-md'
-                                }`}
-                        >
-                            {isLoading ? (
-                                <>
-                                    <Loader2 className="w-6 h-6 mr-3 animate-spin" />
-                                    Requesting Prediction...
-                                </>
-                            ) : (
-                                <>
-                                    <Zap className="w-6 h-6 mr-3" />
-                                    RUN PREDICTION
-                                </>
-                            )}
-                        </button>
+                        {/* 3. Run Buttons */}
+                        <div className="space-y-3">
+                            <button
+                                onClick={handlePredict}
+                                disabled={!isFormValid || isLoading}
+                                className={`w-full py-3 px-4 rounded-xl font-bold text-lg transition duration-300 flex items-center justify-center 
+                                    ${isFormValid && !isLoading 
+                                        ? 'bg-red-600 text-white hover:bg-red-700 shadow-xl shadow-red-300 cursor-pointer' 
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-md'
+                                    }`}
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <Loader2 className="w-6 h-6 mr-3 animate-spin" />
+                                        Requesting Prediction...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap className="w-6 h-6 mr-3" />
+                                        RUN PREDICTION
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleQuickDemo}
+                                disabled={isLoading}
+                                className="w-full py-2.5 px-4 rounded-xl font-semibold text-sm transition duration-200 flex items-center justify-center bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+                            >
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Instant Demo Simulation (No Files Needed)
+                            </button>
+                        </div>
 
                         {error && (
                             <p className="text-sm text-red-600 p-3 bg-red-50 rounded-lg border border-red-200">{error}</p>
