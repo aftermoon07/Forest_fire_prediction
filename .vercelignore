@@ -1,0 +1,10 @@
+requirements.txt
+*.py
+*.h5
+*.ipynb
+Data_preprocessing
+Sequence_generation
+Time_bands
+LULC_categorical
+Plotting
+.ipynb_checkpoints
