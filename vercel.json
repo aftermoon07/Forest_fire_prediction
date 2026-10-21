@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "cd UI_page && npm install && npm run build",
+  "outputDirectory": "UI_page/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
