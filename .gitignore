@@ -51,6 +51,7 @@ wheels/
 .env
 .env.*
 !.env.example
+.vercel/
 
 # OS / Editor artifacts
 .DS_Store
